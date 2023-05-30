@@ -171,12 +171,9 @@ size_t RDMA::register_memory(void* mem, size_t size) {
 
 
 Connection* RDMA::connect_to(std::string ip, uint16_t port) {
-    const std::lock_guard<std::recursive_mutex> lock(mutex);
 
     auto ctx = new Connection(mrs);
     check_ret(rdma_create_id(channel, &ctx->id, nullptr, RDMA_PS_TCP));
-
-    connections[ctx->id] = ctx;
 
 
     {
@@ -294,6 +291,7 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     check_ret(rdma_get_cm_event(channel, &event));
     ensure(event->id == ctx->id);
     ensure(event->event == RDMA_CM_EVENT_ESTABLISHED, [&] {
+        std::cout << "connection to " << ip << " port " << port << "\n";
         return rdma_event_str(event->event);
     });
 
@@ -307,6 +305,10 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     ctx->state = Connection::State::OPEN;
     ctx->type = Connection::Type::OUTGOING;
     ctx->remote_ip = utils::sockaddr_to_ip(rdma_get_peer_addr(ctx->id));
+
+
+    const std::lock_guard<std::recursive_mutex> lock(mutex);
+    connections[ctx->id] = ctx;
 
     return ctx;
 }
