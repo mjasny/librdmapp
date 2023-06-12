@@ -102,7 +102,7 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
             pd = ibv_alloc_pd(context);
             check_ptr(pd);
 
-            {
+            try {
                 std::stringstream path;
                 path << d->ibdev_path << "/device/numa_node";
 
@@ -112,6 +112,8 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
                 }
                 ifile >> numa_socket;
                 ifile.close();
+            } catch (...) {
+                numa_socket = -1;
             }
             break;
         }
@@ -171,6 +173,8 @@ size_t RDMA::register_memory(void* mem, size_t size) {
 
 
 Connection* RDMA::connect_to(std::string ip, uint16_t port) {
+    const std::lock_guard<std::mutex> lock(connect_to_mutex);
+
 
     auto ctx = new Connection(mrs);
     check_ret(rdma_create_id(channel, &ctx->id, nullptr, RDMA_PS_TCP));
@@ -291,7 +295,13 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     check_ret(rdma_get_cm_event(channel, &event));
     ensure(event->id == ctx->id);
     ensure(event->event == RDMA_CM_EVENT_ESTABLISHED, [&] {
-        std::cout << "connection to " << ip << " port " << port << "\n";
+        // TODO handle more cases
+        if (event->event == RDMA_CM_EVENT_REJECTED) {
+            check_ret(rdma_ack_cm_event(event));
+            rdma_destroy_qp(ctx->id);
+            check_ret(ibv_destroy_cq(ctx->cq));
+            check_ret(rdma_destroy_id(ctx->id));
+        }
         return rdma_event_str(event->event);
     });
 
@@ -307,8 +317,10 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     ctx->remote_ip = utils::sockaddr_to_ip(rdma_get_peer_addr(ctx->id));
 
 
-    const std::lock_guard<std::recursive_mutex> lock(mutex);
-    connections[ctx->id] = ctx;
+    {
+        const std::lock_guard<std::recursive_mutex> lock(mutex);
+        connections[ctx->id] = ctx;
+    }
 
     return ctx;
 }

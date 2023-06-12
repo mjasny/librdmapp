@@ -26,13 +26,14 @@ class RDMA {
     uint16_t local_port;
 
     struct ibv_context* context;
-    struct rdma_event_channel* channel;
+    struct rdma_event_channel* channel; // server listen has own channel
     struct ibv_pd* pd;
     std::vector<struct ibv_mr*> mrs;
 
     std::unordered_map<struct rdma_cm_id*, Connection*> connections;
     std::jthread server_thread;
     std::recursive_mutex mutex;
+    std::mutex connect_to_mutex;
 
 public:
     enum Flags {
