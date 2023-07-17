@@ -39,6 +39,14 @@ inline void ensure(bool value, const std::experimental::source_location& locatio
     }
 }
 
+inline void ensure(bool value, const char* err_msg, const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (!value) [[unlikely]] {
+        std::stringstream err;
+        err << location.file_name() << ":" << location.line() << " failed: " << err_msg << "\n";
+        throw std::runtime_error(err.str());
+    }
+}
+
 template <typename T>
 inline void ensure(bool value, T&& err_msg, const std::experimental::source_location& location = std::experimental::source_location::current()) {
     if (!value) [[unlikely]] {

@@ -18,9 +18,9 @@ void post_write(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags f
     sq_wr.opcode = IBV_WR_RDMA_WRITE;
     sq_wr.send_flags = flags;
     // sq_wr.send_flags |= IBV_SEND_FENCE;
-#ifdef USE_INLINE
-    sq_wr.send_flags |= (size <= INLINE_SIZE) ? IBV_SEND_INLINE : 0;
-#endif
+    // #ifdef USE_INLINE
+    //     sq_wr.send_flags |= (size <= INLINE_SIZE) ? IBV_SEND_INLINE : 0;
+    // #endif
     sq_wr.sg_list = &send_sgl;
     sq_wr.num_sge = 1;
     sq_wr.wr.rdma.rkey = rkey;

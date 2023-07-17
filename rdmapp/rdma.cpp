@@ -262,9 +262,9 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     init_attr.cap.max_recv_wr = 8192; // 8192; //1024; //4096;
     init_attr.cap.max_recv_sge = 1;
     init_attr.cap.max_send_sge = 1;
-#ifdef USE_INLINE
-    init_attr.cap.max_inline_data = INLINE_SIZE;
-#endif
+    // #ifdef USE_INLINE
+    //     init_attr.cap.max_inline_data = INLINE_SIZE;
+    // #endif
     init_attr.qp_type = IBV_QPT_RC;
     init_attr.send_cq = ctx->cq;
     init_attr.recv_cq = ctx->cq;
@@ -480,9 +480,9 @@ void RDMA::poll_event(struct rdma_event_channel* channel) {
             init_attr.cap.max_recv_wr = 1; // 1024; //4096; // TODO take from config
             init_attr.cap.max_recv_sge = 1;
             init_attr.cap.max_send_sge = 1;
-#ifdef USE_INLINE
-            init_attr.cap.max_inline_data = INLINE_SIZE;
-#endif
+            // #ifdef USE_INLINE
+            //             init_attr.cap.max_inline_data = INLINE_SIZE;
+            // #endif
             init_attr.qp_type = IBV_QPT_RC;
             init_attr.send_cq = ctx->cq;
             init_attr.recv_cq = ctx->cq;

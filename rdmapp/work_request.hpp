@@ -6,18 +6,45 @@
 #include <infiniband/verbs.h>
 
 namespace rdma {
-namespace wr {
 
+struct Flags {
+    constexpr operator uint32_t() {
+        return value;
+    };
 
-enum Flags : uint32_t {
-    signaled = IBV_SEND_SIGNALED,
-    inlined = IBV_SEND_INLINE,
-    unsignaled = 0,
+    // makes it possible to synchronize on the RDMA op
+    constexpr Flags& signaled() {
+        value |= IBV_SEND_SIGNALED;
+        return *this;
+    }
+
+    constexpr Flags& inlined() {
+        value |= IBV_SEND_INLINE;
+        return *this;
+    }
+
+    constexpr Flags& fenced() {
+        value |= IBV_SEND_FENCE;
+        return *this;
+    }
+
+    constexpr bool is_signaled() {
+        return static_cast<bool>(value & IBV_SEND_SIGNALED);
+    }
+    constexpr bool is_inlined() {
+        return static_cast<bool>(value & IBV_SEND_INLINE);
+    }
+    constexpr bool is_fenced() {
+        return static_cast<bool>(value & IBV_SEND_FENCE);
+    }
+
+private:
+    uint32_t value = 0;
 };
 
-inline Flags operator|(Flags a, Flags b) {
-    return static_cast<Flags>(static_cast<int>(a) | static_cast<int>(b));
-}
+
+namespace wr {
+
 
 void post_write(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uintptr_t remote_offset);
 
