@@ -18,8 +18,8 @@ struct EventHandler : public rdma::EventHandler {
         // same info but state of conn is DISCONNECTED
         std::cout << "on_disconnect\n";
 
-        uint64_t* value = reinterpret_cast<uint64_t*>(mem);
-        std::cout << "server value=0x" << std::hex << *value << std::dec << "\n";
+        // uint64_t* value = reinterpret_cast<uint64_t*>(mem);
+        // std::cout << "server value=0x" << std::hex << *value << std::dec << "\n";
     }
 };
 
@@ -82,22 +82,24 @@ int main(int argc [[maybe_unused]], char** argv [[maybe_unused]]) {
 
         // async. operations examples
         *c_values = 0x1234567812345678;
-        conn->write(c_values, sizeof(uint64_t), 0, rdma::Flags().signaled());  // op 1
-        conn->write(c_values, sizeof(uint64_t), 8);                            // op 2
-        conn->write(c_values, sizeof(uint64_t), 16, rdma::Flags().signaled()); // op 3
-        conn->write(c_values, sizeof(uint64_t), 24);                           // op 4
-        conn->sync_signaled(1);                                                // synchronizes on op 1
-        conn->sync_signaled(1);                                                // synchronizes on op 3
+        conn->write(c_values, sizeof(uint64_t), 0, rdma::Flags().signaled());  // op 0
+        conn->write(c_values, sizeof(uint64_t), 8);                            // op 1
+        conn->write(c_values, sizeof(uint64_t), 16, rdma::Flags().signaled()); // op 2
+        conn->write(c_values, sizeof(uint64_t), 24);                           // op 3
+        conn->sync_signaled(1);                                                // synchronizes on op 0
+        conn->sync_signaled(1);                                                // synchronizes on op 2
         rdma::ensure(s_values[0] == c_values[0]);
+        rdma::ensure(s_values[2] == c_values[0]);
 
 
         *c_values = 0xabcdef;
-        conn->write(c_values, sizeof(uint64_t), 0, rdma::Flags().signaled());  // op 1
-        conn->write(c_values, sizeof(uint64_t), 8);                            // op 2
-        conn->write(c_values, sizeof(uint64_t), 16);                           // op 3
-        conn->write(c_values, sizeof(uint64_t), 24, rdma::Flags().signaled()); // op 4
-        conn->sync_signaled();                                                 // synchronizes on all signaled operations (i.e., 1 & 4)
+        conn->write(c_values, sizeof(uint64_t), 0, rdma::Flags().signaled());  // op 0
+        conn->write(c_values, sizeof(uint64_t), 8);                            // op 1
+        conn->write(c_values, sizeof(uint64_t), 16);                           // op 2
+        conn->write(c_values, sizeof(uint64_t), 24, rdma::Flags().signaled()); // op 3
+        conn->sync_signaled();                                                 // synchronizes on all signaled operations (i.e., 0 & 3)
         rdma::ensure(s_values[0] == c_values[0]);
+        rdma::ensure(s_values[3] == c_values[0]);
 
 
         client.close(conn);
