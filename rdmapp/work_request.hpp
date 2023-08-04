@@ -45,7 +45,7 @@ private:
 
 namespace wr {
 
-
+// one-sided
 void post_write(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uintptr_t remote_offset);
 
 void post_read(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uintptr_t remote_offset);
@@ -53,6 +53,11 @@ void post_read(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags fl
 void post_cmp_swap(void* memAddr, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uint64_t expected, uint64_t desired, uintptr_t remote_offset);
 
 void post_fetch_add(void* memAddr, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uint64_t value, uintptr_t remote_offset);
+
+// two-sided
+void post_send(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags flags);
+
+void post_receive(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey);
 
 } // namespace wr
 } // namespace rdma

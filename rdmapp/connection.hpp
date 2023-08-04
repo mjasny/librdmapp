@@ -16,7 +16,8 @@ class Connection { // TODO Consider rename ConnectionCtx
     friend class RDMA;
 
     struct rdma_cm_id* id;
-    struct ibv_cq* cq;
+    struct ibv_cq* send_cq;
+    struct ibv_cq* recv_cq;
 
 public: // TODO fix
     struct ibv_qp* qp;
@@ -28,6 +29,7 @@ private:
 
 
     int outstanding_signaled_wr = 0;
+    int outstanding_receive_wr = 0;
 
 public:
     size_t max_wr = 128;
@@ -50,20 +52,6 @@ public:
 
 
 public:
-    // template<typename Fn>
-    // void safe_wrapper(Fn fn) {
-    //     Flags flags;
-    //     bool do_signal = outstanding_wr == max_wr / 2;
-    //     if (do_signal) {
-    //         flags.set_signaled();
-    //     }
-    //     fn(flags);
-    //     if (do_signal) {
-    //         poll_cq(1);
-    //         outstanding_wr -= max_wr / 2;
-    //     }
-    // }
-
     void write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags = Flags(), size_t mr_id = 0);
 
     void read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags = Flags(), size_t mr_id = 0);
@@ -74,19 +62,18 @@ public:
     // Compare and swap operation - existing(prior the operation)  server-side value is written into local_addr
     void cmp_swap(uint64_t* local_addr, uint64_t expected, uint64_t desired, uintptr_t remote_offset, Flags flags = Flags(), size_t mr_id = 0);
 
+
+    void send(void* local_addr, uint32_t size, Flags flags = Flags(), size_t mr_id = 0);
+    void recv(void* local_addr, uint32_t size, size_t mr_id = 0);
+
     // Synchronizes num prior signaled operations - num=0 --> poll for all prior signaled wr
     void sync_signaled(int num = 0);
+    void sync_recv(int num = 0);
+    int try_sync_recv(int num = 0);
 };
 
 
-// TODO ConnectionGuard
-
-
-//  rdma_destroy_qp(id);
-//  check_ret(ibv_destroy_cq(cq));
-//  check_ret(rdma_destroy_id(id));
-
-//  usleep(static_cast<__useconds_t>(random() % 100'000)); // "prevent" Switch CPU port incast
+// TODO ConnectionGuard ?
 
 
 } // namespace rdma
