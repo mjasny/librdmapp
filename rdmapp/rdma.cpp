@@ -253,21 +253,24 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     }
 
 
-    ctx->cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0); // 16 is the fixed value for now?
-    check_ptr(ctx->cq);
-
+    ctx->send_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0); // 16 is the fixed value for now?
+    check_ptr(ctx->send_cq);
+    ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0); // 16 is the fixed value for now?
+    check_ptr(ctx->recv_cq);
 
     struct ibv_qp_init_attr init_attr {};
-    init_attr.cap.max_send_wr = 8192; // 8192; //1024; //4096;
-    init_attr.cap.max_recv_wr = 8192; // 8192; //1024; //4096;
+    init_attr.cap.max_send_wr = 1024; // 8192; //1024; //4096;
+    init_attr.cap.max_recv_wr = 1024; // 8192; //1024; //4096;
     init_attr.cap.max_recv_sge = 1;
     init_attr.cap.max_send_sge = 1;
     // #ifdef USE_INLINE
     //     init_attr.cap.max_inline_data = INLINE_SIZE;
     // #endif
+    init_attr.cap.max_inline_data = 220;
+
     init_attr.qp_type = IBV_QPT_RC;
-    init_attr.send_cq = ctx->cq;
-    init_attr.recv_cq = ctx->cq;
+    init_attr.send_cq = ctx->send_cq;
+    init_attr.recv_cq = ctx->recv_cq;
     // discussion here: https://linux-rdma.vger.kernel.narkive.com/8f5hoTKh/sharing-mr-between-multiple-connections
     check_ret(rdma_create_qp(ctx->id, pd /*nullptr*/, &init_attr));
     ctx->qp = ctx->id->qp;
@@ -299,7 +302,8 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
         if (event->event == RDMA_CM_EVENT_REJECTED) {
             check_ret(rdma_ack_cm_event(event));
             rdma_destroy_qp(ctx->id);
-            check_ret(ibv_destroy_cq(ctx->cq));
+            check_ret(ibv_destroy_cq(ctx->send_cq));
+            check_ret(ibv_destroy_cq(ctx->recv_cq));
             check_ret(rdma_destroy_id(ctx->id));
         }
         return rdma_event_str(event->event);
@@ -471,21 +475,24 @@ void RDMA::poll_event(struct rdma_event_channel* channel) {
 
             check_ret(rdma_ack_cm_event(event));
 
-            ctx->cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0);
-            check_ptr(ctx->cq);
+            ctx->send_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0);
+            check_ptr(ctx->send_cq);
+            ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0);
+            check_ptr(ctx->recv_cq);
 
             struct ibv_qp_init_attr init_attr {};
             // memset(&init_attr, 0, sizeof(init_attr));
-            init_attr.cap.max_send_wr = 1; // 1024; //4096; // TODO take from config
-            init_attr.cap.max_recv_wr = 1; // 1024; //4096; // TODO take from config
+            init_attr.cap.max_send_wr = 1024; // 4096; // TODO take from config
+            init_attr.cap.max_recv_wr = 1024; // 4096; // TODO take from config
             init_attr.cap.max_recv_sge = 1;
             init_attr.cap.max_send_sge = 1;
             // #ifdef USE_INLINE
             //             init_attr.cap.max_inline_data = INLINE_SIZE;
             // #endif
+            init_attr.cap.max_inline_data = 220;
             init_attr.qp_type = IBV_QPT_RC;
-            init_attr.send_cq = ctx->cq;
-            init_attr.recv_cq = ctx->cq;
+            init_attr.send_cq = ctx->send_cq;
+            init_attr.recv_cq = ctx->recv_cq;
             check_ret(rdma_create_qp(ctx->id, pd, &init_attr));
             ctx->qp = ctx->id->qp;
 
@@ -568,7 +575,8 @@ void RDMA::close(Connection* ctx) {
 
 void RDMA::destroy_qp(Connection* ctx) {
     rdma_destroy_qp(ctx->id);
-    check_ret(ibv_destroy_cq(ctx->cq));
+    check_ret(ibv_destroy_cq(ctx->send_cq));
+    check_ret(ibv_destroy_cq(ctx->recv_cq));
     check_ret(rdma_destroy_id(ctx->id));
 }
 
