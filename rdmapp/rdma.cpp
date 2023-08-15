@@ -299,6 +299,7 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     ensure(event->id == ctx->id);
     ensure(event->event == RDMA_CM_EVENT_ESTABLISHED, [&] {
         // TODO handle more cases
+        std::string msg{rdma_event_str(event->event)};
         if (event->event == RDMA_CM_EVENT_REJECTED) {
             check_ret(rdma_ack_cm_event(event));
             rdma_destroy_qp(ctx->id);
@@ -306,7 +307,7 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
             check_ret(ibv_destroy_cq(ctx->recv_cq));
             check_ret(rdma_destroy_id(ctx->id));
         }
-        return rdma_event_str(event->event);
+        return msg;
     });
 
     auto& conn = event->param.conn;
