@@ -180,6 +180,9 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     check_ret(rdma_create_id(channel, &ctx->id, nullptr, RDMA_PS_TCP));
 
 
+    struct sockaddr source_sin;
+    struct sockaddr* source_ptr = nullptr;
+
     {
         struct addrinfo* res;
         int ret = getaddrinfo(local_ip.c_str(), nullptr, nullptr, &res);
@@ -187,24 +190,23 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
             throw std::runtime_error("getaddrinfo failed");
         }
 
-        struct sockaddr_storage addr;
-
         if (res->ai_family == PF_INET) {
-            memcpy(&addr, res->ai_addr, sizeof(struct sockaddr_in));
+            memcpy(&source_sin, res->ai_addr, sizeof(struct sockaddr_in));
         } else if (res->ai_family == PF_INET6) {
-            memcpy(&addr, res->ai_addr, sizeof(struct sockaddr_in6));
+            memcpy(&source_sin, res->ai_addr, sizeof(struct sockaddr_in6));
         } else {
             throw std::runtime_error("Unexpected ai_family");
         }
         freeaddrinfo(res);
 
-        // if (addr.ss_family == AF_INET) {
-        //     ((struct sockaddr_in*)&addr)->sin_port = htons(local_port);
+        // if (source_sin.ss_family == AF_INET) {
+        //     ((struct sockaddr_in*)&source_sin)->sin_port = htons(local_port);
         // } else {
-        //     ((struct sockaddr_in6*)&addr)->sin6_port = htons(local_port);
+        //     ((struct sockaddr_in6*)&source_sin)->sin6_port = htons(local_port);
         // }
 
-        check_ret(rdma_bind_addr(ctx->id, (struct sockaddr*)&addr));
+        source_ptr = (struct sockaddr*)&source_sin;
+        // check_ret(rdma_bind_addr(ctx->id, (struct sockaddr*)&source_sin));
     }
 
 
@@ -232,7 +234,7 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
             ((struct sockaddr_in6*)&addr)->sin6_port = htons(port);
         }
 
-        check_ret(rdma_resolve_addr(ctx->id, nullptr, (struct sockaddr*)&addr, TIMEOUT));
+        check_ret(rdma_resolve_addr(ctx->id, source_ptr, (struct sockaddr*)&addr, TIMEOUT));
 
         struct rdma_cm_event* event;
         check_ret(rdma_get_cm_event(channel, &event));
