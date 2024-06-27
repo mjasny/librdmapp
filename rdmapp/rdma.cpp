@@ -308,6 +308,7 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
             check_ret(ibv_destroy_cq(ctx->send_cq));
             check_ret(ibv_destroy_cq(ctx->recv_cq));
             check_ret(rdma_destroy_id(ctx->id));
+            delete ctx;
         }
         return msg;
     });
@@ -568,8 +569,8 @@ void RDMA::close_all() {
 }
 
 void RDMA::close(Connection* ctx) {
-    destroy_qp(ctx);
     const std::lock_guard<std::recursive_mutex> lock(mutex);
+    destroy_qp(ctx);
     ensure(connections.contains(ctx->id));
     connections.erase(ctx->id);
     delete ctx;
