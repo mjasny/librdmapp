@@ -18,7 +18,7 @@
 namespace rdma {
 
 RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
-    setenv("MLX5_SINGLE_THREADED", "1", true);
+    // setenv("MLX5_SINGLE_THREADED", "1", true);
 
     channel = rdma_create_event_channel();
     check_ptr(channel);
@@ -98,7 +98,6 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
 
         if (found_ip) {
             context = list[i];
-            // std::cout << "IP is on: " << context->device->name << "\n";
             pd = ibv_alloc_pd(context);
             check_ptr(pd);
 
@@ -157,8 +156,8 @@ RDMA::~RDMA() {
 
 size_t RDMA::register_memory(void* mem, size_t size) {
     // ensure(mr == nullptr, "some memory region is already registered.");
-
-    auto mr = ibv_reg_mr(pd, mem, size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC);
+    uint32_t access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_RELAXED_ORDERING;
+    auto mr = ibv_reg_mr(pd, mem, size, access_flags);
     check_ptr(mr);
     mrs.push_back(mr);
 
@@ -255,9 +254,9 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     }
 
 
-    ctx->send_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0); // 16 is the fixed value for now?
+    ctx->send_cq = ibv_create_cq(ctx->id->verbs, 64, nullptr, nullptr, 0); // 16 is the fixed value for now?
     check_ptr(ctx->send_cq);
-    ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0); // 16 is the fixed value for now?
+    ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 64, nullptr, nullptr, 0); // 16 is the fixed value for now?
     check_ptr(ctx->recv_cq);
 
     struct ibv_qp_init_attr init_attr {};
@@ -277,7 +276,6 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     check_ret(rdma_create_qp(ctx->id, pd /*nullptr*/, &init_attr));
     ctx->qp = ctx->id->qp;
 
-
     struct rdma_conn_param conn_param {};
 
     conn_param.responder_resources = RDMA_MAX_RESP_RES;
@@ -293,8 +291,8 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     conn_param.private_data = &init_msg;
     conn_param.private_data_len = sizeof(InitMsg);
 
-    // check_ret(rdma_connect(ctx->id, &conn_param));
     check_ret(rdma_connect(ctx->id, &conn_param));
+
 
     struct rdma_cm_event* event;
     check_ret(rdma_get_cm_event(channel, &event));
@@ -316,6 +314,8 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     auto& conn = event->param.conn;
     ensure(conn.private_data_len >= sizeof(InitMsg));
     std::memcpy(ctx->init_msg, conn.private_data, sizeof(InitMsg));
+    ctx->add_remote_mr(ctx->init_msg.meminfo);
+
 
     check_ret(rdma_ack_cm_event(event));
     // std::cout << "connection established\n";
@@ -323,7 +323,6 @@ Connection* RDMA::connect_to(std::string ip, uint16_t port) {
     ctx->state = Connection::State::OPEN;
     ctx->type = Connection::Type::OUTGOING;
     ctx->remote_ip = utils::sockaddr_to_ip(rdma_get_peer_addr(ctx->id));
-
 
     {
         const std::lock_guard<std::recursive_mutex> lock(mutex);
@@ -399,7 +398,7 @@ void RDMA::listen(Flags flags) {
         while (true) {
             poll_event(channel);
 
-
+            const std::lock_guard<std::recursive_mutex> lock(mutex); // for connections
             if (!had_connections && connections.size() > 0) {
                 for (auto& [_, ctx] : connections) {
                     if (ctx->type == Connection::Type::INCOMING) {
@@ -460,7 +459,7 @@ void RDMA::poll_event(struct rdma_event_channel* channel) {
 
     switch (event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST: {
-            ensure(mrs.size() == 1, [&]() {
+            ensure(mrs.size() >= 1, [&]() {
                 if (mrs.size() == 0) {
                     return "No memory region was registered";
                 }
@@ -476,12 +475,13 @@ void RDMA::poll_event(struct rdma_event_channel* channel) {
             auto& conn = event->param.conn;
             ensure(conn.private_data_len >= sizeof(InitMsg));
             std::memcpy(ctx->init_msg, conn.private_data, sizeof(InitMsg));
+            ctx->add_remote_mr(ctx->init_msg.meminfo);
 
             check_ret(rdma_ack_cm_event(event));
 
-            ctx->send_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0);
+            ctx->send_cq = ibv_create_cq(ctx->id->verbs, 64, nullptr, nullptr, 0);
             check_ptr(ctx->send_cq);
-            ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 16, nullptr, nullptr, 0);
+            ctx->recv_cq = ibv_create_cq(ctx->id->verbs, 64, nullptr, nullptr, 0);
             check_ptr(ctx->recv_cq);
 
             struct ibv_qp_init_attr init_attr {};
@@ -595,6 +595,7 @@ void RDMA::print_qp_states() {
         check_ret(ibv_query_qp(conn->qp, &attr, attr_mask, /*struct ibv_qp_init_attr * init_attr */ &init_attr));
         ss << i++ << ": dest_qp_num=" << attr.dest_qp_num << " qp_state=" << +attr.qp_state << " cur_qp_state=" << +attr.cur_qp_state << "\n";
 
+        continue;
         // 0 IBV_QPS_RESET - Reset state
         // 1 IBV_QPS_INIT - Initialized state
         // 2 IBV_QPS_RTR - Ready To Receive state
@@ -602,7 +603,146 @@ void RDMA::print_qp_states() {
         // 4 IBV_QPS_SQD - Send Queue Drain state
         // 5 IBV_QPS_SQE - Send Queue Error state
         // 6 IBV_QPS_ERR - Error state
+
+        // Lambda functions for conversion
+        auto qp_state_to_string = [](enum ibv_qp_state state) -> const char* {
+            switch (state) {
+                case IBV_QPS_RESET:
+                    return "RESET";
+                case IBV_QPS_INIT:
+                    return "INIT";
+                case IBV_QPS_RTR:
+                    return "RTR";
+                case IBV_QPS_RTS:
+                    return "RTS";
+                case IBV_QPS_SQD:
+                    return "SQD";
+                case IBV_QPS_SQE:
+                    return "SQE";
+                case IBV_QPS_ERR:
+                    return "ERR";
+                default:
+                    return "UNKNOWN";
+            }
+        };
+
+        auto mtu_to_string = [](enum ibv_mtu mtu) -> const char* {
+            switch (mtu) {
+                case IBV_MTU_256:
+                    return "256";
+                case IBV_MTU_512:
+                    return "512";
+                case IBV_MTU_1024:
+                    return "1024";
+                case IBV_MTU_2048:
+                    return "2048";
+                case IBV_MTU_4096:
+                    return "4096";
+                default:
+                    return "UNKNOWN";
+            }
+        };
+
+        auto mig_state_to_string = [](enum ibv_mig_state state) -> const char* {
+            switch (state) {
+                case IBV_MIG_MIGRATED:
+                    return "MIGRATED";
+                case IBV_MIG_REARM:
+                    return "REARM";
+                case IBV_MIG_ARMED:
+                    return "ARMED";
+                default:
+                    return "UNKNOWN";
+            }
+        };
+
+        auto print_ah_attr = [&ss](const struct ibv_ah_attr& attr) {
+            ss << "    ah_attr:" << "\n";
+            ss << "      dlid: " << attr.dlid << "\n";
+            ss << "      sl: " << static_cast<int>(attr.sl) << "\n";
+            ss << "      src_path_bits: " << static_cast<int>(attr.src_path_bits) << "\n";
+            ss << "      static_rate: " << static_cast<int>(attr.static_rate) << "\n";
+            ss << "      is_global: " << static_cast<int>(attr.is_global) << "\n";
+            ss << "      port_num: " << static_cast<int>(attr.port_num) << "\n";
+            if (attr.is_global) {
+                ss << "      grh:" << "\n";
+                ss << "        dgid: ";
+                for (int i = 0; i < 16; ++i) {
+                    ss << std::hex << static_cast<int>(attr.grh.dgid.raw[i]) << " ";
+                }
+                ss << std::dec << "\n";
+                ss << "        flow_label: " << attr.grh.flow_label << "\n";
+                ss << "        sgid_index: " << static_cast<int>(attr.grh.sgid_index) << "\n";
+                ss << "        hop_limit: " << static_cast<int>(attr.grh.hop_limit) << "\n";
+                ss << "        traffic_class: " << static_cast<int>(attr.grh.traffic_class) << "\n";
+            }
+        };
+
+        // attr_mask = IBV_QP_STATE | IBV_QP_CUR_STATE | IBV_QP_EN_SQD_ASYNC_NOTIFY | IBV_QP_CAP | IBV_QP_DEST_QPN | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_PATH_MIG_STATE | IBV_QP_QKEY | IBV_QP_RQ_PSN | IBV_QP_SQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_RNR_NAK_TIMEOUT | IBV_QP_MIN_RNR_TIMER | IBV_QP_FLOW_ENTROPY | IBV_QP_INIT_ATTR_MASK;
+        attr_mask = IBV_QP_STATE |
+                    IBV_QP_CUR_STATE |
+                    IBV_QP_EN_SQD_ASYNC_NOTIFY |
+                    IBV_QP_ACCESS_FLAGS |
+                    IBV_QP_PKEY_INDEX |
+                    IBV_QP_PORT |
+                    IBV_QP_QKEY |
+                    IBV_QP_AV |
+                    IBV_QP_PATH_MTU |
+                    IBV_QP_TIMEOUT |
+                    IBV_QP_RETRY_CNT |
+                    IBV_QP_RNR_RETRY |
+                    IBV_QP_RQ_PSN |
+                    IBV_QP_MAX_QP_RD_ATOMIC |
+                    IBV_QP_ALT_PATH |
+                    IBV_QP_MIN_RNR_TIMER |
+                    IBV_QP_SQ_PSN |
+                    IBV_QP_MAX_DEST_RD_ATOMIC |
+                    IBV_QP_PATH_MIG_STATE |
+                    IBV_QP_CAP |
+                    IBV_QP_DEST_QPN | IBV_QP_RATE_LIMIT;
+        check_ret(ibv_query_qp(conn->qp, &attr, attr_mask, &init_attr));
+
+        ss << "QP attributes:" << "\n";
+        ss << "  qp_state: " << qp_state_to_string(attr.qp_state) << "\n";
+        ss << "  cur_qp_state: " << qp_state_to_string(attr.cur_qp_state) << "\n";
+        ss << "  path_mtu: " << mtu_to_string(attr.path_mtu) << "\n";
+        ss << "  path_mig_state: " << mig_state_to_string(attr.path_mig_state) << "\n";
+        ss << "  qkey: " << attr.qkey << "\n";
+        ss << "  rq_psn: " << attr.rq_psn << "\n";
+        ss << "  sq_psn: " << attr.sq_psn << "\n";
+        ss << "  dest_qp_num: " << attr.dest_qp_num << "\n";
+        ss << "  qp_access_flags: " << attr.qp_access_flags << "\n";
+
+        ss << "  cap:" << "\n";
+        ss << "    max_send_wr: " << attr.cap.max_send_wr << "\n";
+        ss << "    max_recv_wr: " << attr.cap.max_recv_wr << "\n";
+        ss << "    max_send_sge: " << attr.cap.max_send_sge << "\n";
+        ss << "    max_recv_sge: " << attr.cap.max_recv_sge << "\n";
+        ss << "    max_inline_data: " << attr.cap.max_inline_data << "\n";
+
+        ss << "  ah_attr:" << "\n";
+        print_ah_attr(attr.ah_attr);
+
+        ss << "  alt_ah_attr:" << "\n";
+        print_ah_attr(attr.alt_ah_attr);
+
+        ss << "  pkey_index: " << attr.pkey_index << "\n";
+        ss << "  alt_pkey_index: " << attr.alt_pkey_index << "\n";
+        ss << "  en_sqd_async_notify: " << static_cast<int>(attr.en_sqd_async_notify) << "\n";
+        ss << "  sq_draining: " << static_cast<int>(attr.sq_draining) << "\n";
+        ss << "  max_rd_atomic: " << static_cast<int>(attr.max_rd_atomic) << "\n";
+        ss << "  max_dest_rd_atomic: " << static_cast<int>(attr.max_dest_rd_atomic) << "\n";
+        ss << "  min_rnr_timer: " << static_cast<int>(attr.min_rnr_timer) << "\n";
+        ss << "  port_num: " << static_cast<int>(attr.port_num) << "\n";
+        ss << "  timeout: " << static_cast<int>(attr.timeout) << "\n";
+        ss << "  retry_cnt: " << static_cast<int>(attr.retry_cnt) << "\n";
+        ss << "  rnr_retry: " << static_cast<int>(attr.rnr_retry) << "\n";
+        ss << "  alt_port_num: " << static_cast<int>(attr.alt_port_num) << "\n";
+        ss << "  alt_timeout: " << static_cast<int>(attr.alt_timeout) << "\n";
+        ss << "  rate_limit: " << attr.rate_limit << "\n";
     }
+
+
     std::cout << ss.rdbuf();
 }
 

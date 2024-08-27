@@ -28,8 +28,11 @@ class RDMA {
     struct ibv_context* context;
     struct rdma_event_channel* channel; // server listen has own channel
     struct ibv_pd* pd;
+
+public:
     std::vector<struct ibv_mr*> mrs;
 
+private:
     std::unordered_map<struct rdma_cm_id*, Connection*> connections;
     std::jthread server_thread;
     std::recursive_mutex mutex;

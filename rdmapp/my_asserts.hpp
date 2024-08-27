@@ -30,6 +30,15 @@ inline void check_ret(T ret, const std::experimental::source_location& location 
     }
 }
 
+template <typename T>
+inline void check_zero(T ret, const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (ret) [[unlikely]] {
+        std::stringstream err;
+        err << location.file_name() << ":" << location.line() << " got error: " << std::strerror(errno) << '\n';
+        throw std::runtime_error(err.str());
+    }
+}
+
 
 inline void ensure(bool value, const std::experimental::source_location& location = std::experimental::source_location::current()) {
     if (!value) [[unlikely]] {

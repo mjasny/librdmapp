@@ -29,7 +29,7 @@ void post_write(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags f
     sq_wr.next = nullptr; // do not forget to set this otherwise it crashes
 
     struct ibv_send_wr* bad_wr;
-    check_ret(ibv_post_send(qp, &sq_wr, &bad_wr));
+    check_zero(ibv_post_send(qp, &sq_wr, &bad_wr));
 }
 
 
@@ -51,7 +51,7 @@ void post_read(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags fl
     sq_wr.next = nullptr; // do not forget to set this otherwise it crashes
 
     struct ibv_send_wr* bad_wr;
-    check_ret(ibv_post_send(qp, &sq_wr, &bad_wr));
+    check_zero(ibv_post_send(qp, &sq_wr, &bad_wr));
 }
 
 void post_cmp_swap(void* memAddr, ibv_qp* qp, uint32_t lkey, Flags flags, uint32_t rkey, uint64_t expected, uint64_t desired, uintptr_t remote_offset) {
@@ -73,7 +73,7 @@ void post_cmp_swap(void* memAddr, ibv_qp* qp, uint32_t lkey, Flags flags, uint32
     sq_wr.next = nullptr; // do not forget to set this otherwise it crashes
 
     struct ibv_send_wr* bad_wr; // TODO error-message for check_ret?
-    check_ret(ibv_post_send(qp, &sq_wr, &bad_wr));
+    check_zero(ibv_post_send(qp, &sq_wr, &bad_wr));
 }
 
 
@@ -95,7 +95,7 @@ void post_fetch_add(void* memAddr, ibv_qp* qp, uint32_t lkey, Flags flags, uint3
     sq_wr.next = nullptr; // do not forget to set this otherwise it crashes
 
     struct ibv_send_wr* bad_wr; // TODO error-message for check_ret?
-    check_ret(ibv_post_send(qp, &sq_wr, &bad_wr));
+    check_zero(ibv_post_send(qp, &sq_wr, &bad_wr));
 }
 
 
@@ -114,7 +114,7 @@ void post_send(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey, Flags fl
     sq_wr.next = nullptr; // do not forget to set this otherwise it crashes
 
     struct ibv_send_wr* bad_wr; // TODO error-message for check_ret?
-    check_ret(ibv_post_send(qp, &sq_wr, &bad_wr));
+    check_zero(ibv_post_send(qp, &sq_wr, &bad_wr));
 }
 
 
@@ -130,7 +130,7 @@ void post_receive(void* memAddr, uint32_t size, ibv_qp* qp, uint32_t lkey) {
     rq_wr.next = nullptr;
 
     struct ibv_recv_wr* bad_wr; // TODO error-message for check_ret?
-    check_ret(ibv_post_recv(qp, &rq_wr, &bad_wr));
+    check_zero(ibv_post_recv(qp, &rq_wr, &bad_wr));
 }
 
 

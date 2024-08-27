@@ -5,77 +5,96 @@
 
 namespace rdma {
 
-
-void Connection::write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags, size_t mr_id) {
-    if (flags.is_signaled()) {
-        ++outstanding_signaled_wr;
+Connection::Connection(std::vector<struct ibv_mr*>& mrs) {
+    entries.reserve(1024);
+    for (auto* mr : mrs) {
+        lkeys.push_back(mr->lkey);
     }
+    local_mr(0);
+}
 
-    auto mr = mrs.at(mr_id);
-    uintptr_t remote_addr = reinterpret_cast<uintptr_t>(init_msg.meminfo.addr) + remote_offset;
-    uint32_t rkey = init_msg.meminfo.rkey;
-    wr::post_write(local_addr, size, qp, mr->lkey, flags, rkey, remote_addr);
+void Connection::add_remote_mr(MemInfo meminfo) {
+    r_mrs.push_back({
+        .base_addr = reinterpret_cast<uintptr_t>(meminfo.addr),
+        .rkey = meminfo.rkey,
+    });
+    if (r_mrs.size() == 1) {
+        remote_mr(0);
+    }
 }
 
 
-void Connection::read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags, size_t mr_id) {
-    if (flags.is_signaled()) {
-        ++outstanding_signaled_wr;
-    }
+void Connection::local_mr(size_t mr_id) {
+    lkey = lkeys.at(mr_id);
+}
+void Connection::remote_mr(size_t mr_id) {
+    auto& mr = r_mrs.at(mr_id);
+    base_addr = mr.base_addr;
+    rkey = mr.rkey;
+}
 
-    auto mr = mrs.at(mr_id);
-    uintptr_t remote_addr = reinterpret_cast<uintptr_t>(init_msg.meminfo.addr) + remote_offset;
-    uint32_t rkey = init_msg.meminfo.rkey;
-    wr::post_read(local_addr, size, qp, mr->lkey, flags, rkey, remote_addr);
+void Connection::write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
+    wr::post_write(local_addr, size, qp, lkey, flags, rkey, remote_addr);
 }
 
 
-void Connection::cmp_swap(uint64_t* local_addr, uint64_t expected, uint64_t desired, uintptr_t remote_offset, Flags flags, size_t mr_id) {
-    if (flags.is_signaled()) {
-        ++outstanding_signaled_wr;
-    }
-
-    auto mr = mrs.at(mr_id);
-    uintptr_t remote_addr = reinterpret_cast<uintptr_t>(init_msg.meminfo.addr) + remote_offset;
-    uint32_t rkey = init_msg.meminfo.rkey;
-    wr::post_cmp_swap(local_addr, qp, mr->lkey, flags, rkey, expected, desired, remote_addr);
+void Connection::read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
+    wr::post_read(local_addr, size, qp, lkey, flags, rkey, remote_addr);
 }
 
 
-void Connection::fetch_add(uint64_t* local_addr, uint64_t value, uintptr_t remote_offset, Flags flags, size_t mr_id) {
-    if (flags.is_signaled()) {
-        ++outstanding_signaled_wr;
-    }
+void Connection::prep_read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
 
-    auto mr = mrs.at(mr_id);
-    uintptr_t remote_addr = reinterpret_cast<uintptr_t>(init_msg.meminfo.addr) + remote_offset;
-    uint32_t rkey = init_msg.meminfo.rkey;
-    wr::post_fetch_add(local_addr, qp, mr->lkey, flags, rkey, value, remote_addr);
+    auto& entry = entries.emplace_back();
+    entry.sge.addr = reinterpret_cast<uint64_t>(local_addr);
+    entry.sge.length = size;
+    entry.sge.lkey = lkey;
+
+    entry.wr.opcode = IBV_WR_RDMA_READ;
+    entry.wr.send_flags = flags;
+    entry.wr.sg_list = &entry.sge;
+    entry.wr.num_sge = 1;
+    entry.wr.wr.rdma.rkey = rkey;
+    entry.wr.wr.rdma.remote_addr = remote_addr;
+    entry.wr.next = nullptr;
+    if (entries.size() > 1) {
+        entries[entries.size() - 2].wr.next = &entry.wr;
+    }
+}
+
+void Connection::flush_wrs() {
+    ensure(entries.size() > 0);
+    struct ibv_send_wr* bad_wr;
+    check_zero(ibv_post_send(qp, &entries[0].wr, &bad_wr));
+    entries.clear();
 }
 
 
-void Connection::send(void* local_addr, uint32_t size, Flags flags, size_t mr_id) {
-    if (flags.is_signaled()) {
-        ++outstanding_signaled_wr;
-    }
-
-    auto mr = mrs.at(mr_id);
-    wr::post_send(local_addr, size, qp, mr->lkey, flags);
+void Connection::cmp_swap(uint64_t* local_addr, uint64_t expected, uint64_t desired, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
+    wr::post_cmp_swap(local_addr, qp, lkey, flags, rkey, expected, desired, remote_addr);
 }
 
-void Connection::recv(void* local_addr, uint32_t size, size_t mr_id) {
-    ++outstanding_receive_wr;
 
-    auto mr = mrs.at(mr_id);
-    wr::post_receive(local_addr, size, qp, mr->lkey);
+void Connection::fetch_add(uint64_t* local_addr, uint64_t value, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
+    wr::post_fetch_add(local_addr, qp, lkey, flags, rkey, value, remote_addr);
+}
+
+
+void Connection::send(void* local_addr, uint32_t size, Flags flags) {
+    wr::post_send(local_addr, size, qp, lkey, flags);
+}
+
+void Connection::recv(void* local_addr, uint32_t size) {
+    wr::post_receive(local_addr, size, qp, lkey);
 }
 
 
 void Connection::sync_signaled(int num) {
-    ensure(num <= outstanding_signaled_wr, "Cannot poll for more than is sent out with signaled");
-    if (num == 0) {
-        num = outstanding_signaled_wr;
-    }
     ibv_wc wc[num];
     int left = num;
 
@@ -89,16 +108,25 @@ void Connection::sync_signaled(int num) {
         }
         left -= nc;
     } while (left > 0);
-
-    outstanding_signaled_wr -= num;
 }
 
 
-void Connection::sync_recv(int num) {
-    ensure(num <= outstanding_receive_wr, "Cannot poll for more than is sent out using post_receive");
-    if (num == 0) {
-        num = outstanding_receive_wr;
+int Connection::try_sync_signaled(int num) {
+    ibv_wc wc[num];
+    int left = num;
+
+    int nc = ibv_poll_cq(send_cq, left, wc);
+    check_ret(nc);
+    for (int i = 0; i < nc; ++i) {
+        ensure(wc[i].status == IBV_WC_SUCCESS, [&] {
+            return ibv_wc_status_str(wc[i].status);
+        });
     }
+
+    return nc;
+}
+
+void Connection::sync_recv(int num) {
     ibv_wc wc[num];
     int left = num;
 
@@ -112,15 +140,10 @@ void Connection::sync_recv(int num) {
         }
         left -= nc;
     } while (left > 0);
-
-    outstanding_receive_wr -= num;
 }
 
+
 int Connection::try_sync_recv(int num) {
-    ensure(num <= outstanding_receive_wr, "Cannot poll for more than is sent out using post_receive");
-    if (num == 0) {
-        num = outstanding_receive_wr;
-    }
     ibv_wc wc[num];
 
     int nc = ibv_poll_cq(recv_cq, num, wc);
@@ -131,7 +154,6 @@ int Connection::try_sync_recv(int num) {
         });
     }
 
-    outstanding_receive_wr -= nc;
     return nc;
 }
 
