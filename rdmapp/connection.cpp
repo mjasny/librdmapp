@@ -44,6 +44,25 @@ void Connection::read(void* local_addr, uint32_t size, uintptr_t remote_offset, 
     wr::post_read(local_addr, size, qp, lkey, flags, rkey, remote_addr);
 }
 
+void Connection::prep_write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
+    uintptr_t remote_addr = base_addr + remote_offset;
+
+    auto& entry = entries.emplace_back();
+    entry.sge.addr = reinterpret_cast<uint64_t>(local_addr);
+    entry.sge.length = size;
+    entry.sge.lkey = lkey;
+
+    entry.wr.opcode = IBV_WR_RDMA_WRITE;
+    entry.wr.send_flags = flags;
+    entry.wr.sg_list = &entry.sge;
+    entry.wr.num_sge = 1;
+    entry.wr.wr.rdma.rkey = rkey;
+    entry.wr.wr.rdma.remote_addr = remote_addr;
+    entry.wr.next = nullptr;
+    if (entries.size() > 1) {
+        entries[entries.size() - 2].wr.next = &entry.wr;
+    }
+}
 
 void Connection::prep_read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
     uintptr_t remote_addr = base_addr + remote_offset;

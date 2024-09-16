@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <stdexcept>
 
+namespace rdma {
+namespace utils {
+
 template <typename T, size_t N>
 struct static_vector {
     static_vector() : size_(0) {}
@@ -46,3 +49,6 @@ private:
     size_t size_ = 0;
     T data_[N];
 };
+
+} // namespace utils
+} // namespace rdma

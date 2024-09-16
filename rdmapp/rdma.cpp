@@ -47,6 +47,19 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
 
         int max_entries = port_attr.gid_tbl_len * device_attr.phys_port_cnt;
 
+        // struct ibv_gid_entry {
+        //     union ibv_gid gid;
+        //     uint32_t gid_index;
+        //     uint32_t port_num;
+        //     uint32_t gid_type; /* enum ibv_gid_type */
+        //     uint32_t ndev_ifindex;
+        // };
+        // auto ibv_query_gid_table = [](struct ibv_context* context,
+        //                               struct ibv_gid_entry* entries,
+        //                               size_t max_entries, uint32_t flags) -> ssize_t {
+        // };
+
+
         struct ibv_gid_entry entries[max_entries];
         ssize_t n_entries = ibv_query_gid_table(list[i], entries, max_entries, 0);
         check_ret(n_entries);

@@ -43,8 +43,10 @@ private:
         uint32_t rkey;
     };
 
-    static_vector<uint32_t, MAX_MR> lkeys;
-    static_vector<RemoteMR, MAX_MR> r_mrs;
+    utils::static_vector<uint32_t, MAX_MR> lkeys;
+
+public:
+    utils::static_vector<RemoteMR, MAX_MR> r_mrs;
 
 
 public:
@@ -78,6 +80,7 @@ public:
 
     void read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags);
 
+    void prep_write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags);
     void prep_read(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags);
     void flush_wrs();
 
