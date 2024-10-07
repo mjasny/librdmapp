@@ -25,6 +25,7 @@ public: // TODO fix
 
     Connection(std::vector<struct ibv_mr*>& mrs);
 
+    void add_local_mr(uint32_t lkey);
     void add_remote_mr(MemInfo meminfo);
 
     void local_mr(size_t mr_id);
@@ -36,7 +37,7 @@ private:
     uint32_t rkey;
     uintptr_t base_addr;
 
-    static constexpr size_t MAX_MR = 2; // Maximal Memory Regions
+    static constexpr size_t MAX_MR = 4; // Maximal Memory Regions
 
     struct RemoteMR {
         uintptr_t base_addr;

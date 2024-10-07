@@ -13,6 +13,10 @@ Connection::Connection(std::vector<struct ibv_mr*>& mrs) {
     local_mr(0);
 }
 
+void Connection::add_local_mr(uint32_t lkey) {
+    lkeys.push_back(lkey);
+}
+
 void Connection::add_remote_mr(MemInfo meminfo) {
     r_mrs.push_back({
         .base_addr = reinterpret_cast<uintptr_t>(meminfo.addr),
@@ -32,7 +36,6 @@ void Connection::remote_mr(size_t mr_id) {
     base_addr = mr.base_addr;
     rkey = mr.rkey;
 }
-
 void Connection::write(void* local_addr, uint32_t size, uintptr_t remote_offset, Flags flags) {
     uintptr_t remote_addr = base_addr + remote_offset;
     wr::post_write(local_addr, size, qp, lkey, flags, rkey, remote_addr);

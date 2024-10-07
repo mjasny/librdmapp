@@ -64,8 +64,8 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
         ssize_t n_entries = ibv_query_gid_table(list[i], entries, max_entries, 0);
         check_ret(n_entries);
 
-        for (ssize_t i = 0; i < n_entries; ++i) {
-            auto e = entries[i];
+        for (ssize_t j = 0; j < n_entries; ++j) {
+            auto e = entries[j];
 
 
             // enum ibv_gid_type {
@@ -74,7 +74,6 @@ RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
             //     IBV_GID_TYPE_ROCE_V2,
             // };
             // std::cout << e.gid_index << " " << e.port_num << " " << e.gid_type << " " << e.ndev_ifindex << "\n";
-
 
             if (!std::equal(IPV4_PREFIX.begin(), IPV4_PREFIX.end(), e.gid.raw)) {
                 continue;
