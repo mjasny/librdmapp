@@ -18,7 +18,8 @@
 namespace rdma {
 
 RDMA::RDMA(std::string ip, uint16_t port) : local_ip(ip), local_port(port) {
-    setenv("MLX5_SINGLE_THREADED", "1", true);
+    // Optimization for single threaded application
+    // setenv("MLX5_SINGLE_THREADED", "1", true);
 
     channel = rdma_create_event_channel();
     check_ptr(channel);
